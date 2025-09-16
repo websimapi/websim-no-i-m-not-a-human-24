@@ -23,10 +23,16 @@ export function applyPosterizeToImage(canvas, image, levels = 5.0, edgeMix = 0.1
   uniform vec2 uTexel;
   uniform float uLevels;
   uniform float uEdgeMix;
+  uniform float uTime;
+  uniform float uSkyFog;
   varying vec2 vUV;
 
   float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
   vec3 posterize(vec3 c, float lv){ return floor(c*lv)/lv; }
+
+  float hash(vec2 p){return fract(sin(dot(p,vec2(41.3,289.1)))*43758.5453;}
+  float noise(vec2 p){vec2 i=floor(p),f=fract(p);float a=hash(i),b=hash(i+vec2(1,0)),c=hash(i+vec2(0,1)),d=hash(i+vec2(1,1));vec2 u=f*f*(3.0-2.0*f);return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}
+  float fbm(vec2 p){float v=0.0,a=0.55;mat2 m=mat2(1.6,1.2,-1.2,1.6);for(int i=0;i<5;i++){v+=a*noise(p);p=m*p;a*=0.55;}return v;}
 
   void main(){
     vec3 col = texture2D(uTex0, vUV).rgb;
@@ -54,6 +60,14 @@ export function applyPosterizeToImage(canvas, image, levels = 5.0, edgeMix = 0.1
     float strength = mix(0.5, 1.0, skyT);      // reduce effect in sky
     vec3 orig = texture2D(uTex0, vUV).rgb;
     vec3 finalCol = mix(orig, postEdge, strength);
+    // Animated "lava-lamp" fog only in sky (top region)
+    float skyMask = 1.0 - smoothstep(0.0, 0.42, vUV.y);
+    vec2 uv = vUV; uv.x *= 1.2; // gentle horizontal stretch
+    float t = uTime * 0.08;
+    float field = fbm(uv*3.0 + vec2(t*0.9, -t*0.7));
+    float blobs = smoothstep(0.46, 0.62, field); // soft blobby islands
+    float fogMix = uSkyFog * skyMask;
+    finalCol = mix(finalCol, mix(finalCol*0.92, finalCol*1.06, blobs), fogMix);
     gl_FragColor = vec4(finalCol, 1.0);
  }`;
 
@@ -92,17 +106,23 @@ export function applyPosterizeToImage(canvas, image, levels = 5.0, edgeMix = 0.1
   const uTexel = gl.getUniformLocation(prog, 'uTexel');
   const uLevels = gl.getUniformLocation(prog, 'uLevels');
   const uEdgeMix = gl.getUniformLocation(prog, 'uEdgeMix');
+  const uTime = gl.getUniformLocation(prog, 'uTime');
+  const uSkyFog = gl.getUniformLocation(prog, 'uSkyFog');
 
-  function draw() {
+  function draw(timeSec = 0) {
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.useProgram(prog);
     gl.uniform2f(uTexel, 1.0 / image.naturalWidth, 1.0 / image.naturalHeight);
     gl.uniform1f(uLevels, levels);
     gl.uniform1f(uEdgeMix, edgeMix);
+    gl.uniform1f(uTime, timeSec);
+    gl.uniform1f(uSkyFog, 0.35);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  resize(); 
-  draw(); 
+  resize();
+  let start = performance.now();
+  const loop = (tm)=>{ draw((tm - start) * 0.001); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
   window.addEventListener('resize', resize, { passive: true });
 }
