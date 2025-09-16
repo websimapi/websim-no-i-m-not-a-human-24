@@ -49,7 +49,11 @@ export function applyPosterizeToImage(canvas, image, levels = 5.0, edgeMix = 0.1
     float edge = clamp(length(vec2(gx, gy))*0.9, 0.0, 1.0);
     vec3 edgeCol = vec3(1.0 - edge); // dark lines
 
-    vec3 finalCol = mix(post, post*edgeCol, uEdgeMix);
+    vec3 postEdge = mix(post, post*edgeCol, uEdgeMix);
+    float skyT = smoothstep(0.0, 0.40, vUV.y); // 0 at top, 1 by ~40% down
+    float strength = mix(0.5, 1.0, skyT);      // reduce effect in sky
+    vec3 orig = texture2D(uTex0, vUV).rgb;
+    vec3 finalCol = mix(orig, postEdge, strength);
     gl_FragColor = vec4(finalCol, 1.0);
  }`;
 
